@@ -1,0 +1,695 @@
+#include "..\RobotNetwork\robot_network.h"
+#include <stdio.h>
+
+#define SERVER_ADDRESS  "127.0.0.1"
+#define SERVER_PORT     2333
+#define CLIENT_NODE_ID  1
+
+
+
+RN_CONTEXT context_client;
+int connection_established=0;
+PSOCK psock;
+int client_node_id;
+
+
+
+
+void* handler(RN_PCONTEXT pcontext, PSOCK psrc_socket, int event_code, int err_code, int nid, void* data, int size)
+{
+    switch (event_code)
+    {
+     case EVENT_NETWORK_CONNECTION_NEW:
+        printf("\n%i@%s => Connection Established\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr));        
+        connection_established= 1;
+        psock = psrc_socket;
+        break;
+    case EVENT_NETWORK_CONNECTION_CLOSED:
+        printf("%i@%s => Connection Closed\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr));
+        break;
+    case EVENT_NETWORK_CONNECTION_RX:
+        printf("%i@%s => Connection Recieved %ib of Data from node %i: ", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr),size, nid);
+        //rn_write_data(pcontext,psrc_socket,((unsigned char*)data),0,size);
+        break;
+    case EVENT_NETWORK_CONNECTION_TX:
+        printf("%i@%s => Connection Sent Data\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr), nid);
+        break;
+    case EVENT_NETWORK_ERR:
+        switch(err_code)
+        {
+            case ERR_SUCCESS:
+                break;
+            case ERR_NOT_IMPLEMENTED:
+                break;
+            case ERR_FAILEDTOCREATESOCKET:
+                break;
+            case ERR_FAILEDTOBINDSOCKET:
+                break;
+            case ERR_FAILEDTOLISTENSOCKET:
+                break;
+            case ERR_FAILEDTOCONNECTSOCKET:
+                break;
+            case ERR_FAILEDTOACCEPTSOCKET:
+                break;
+            case ERR_FAILEDTOWRITESOCKET:
+                break;
+            case ERR_FAILEDTOREADSOCKET:
+                break;
+            case ERR_FAILEDTOALLOCATEMEMORY:
+                break;
+            default:
+                break;
+        }
+        break;
+    default:
+        printf("Unknown event.\n");
+        break;
+    }
+    return NULL;
+
+}
+
+
+int main(int argc, char **argv)
+{
+    int i;
+    int j;
+    int all_connected=0;
+    FILE* fp;
+    long size;
+    unsigned char* image_buffer = (unsigned char*)malloc(16777216);
+    
+    
+    printf("Client Test\n");
+
+    fp = fopen("c:\\AAAAAATestImage.bmp","r+b");
+    fseek (fp , 0 , SEEK_END);
+    size = ftell (fp);
+    rewind (fp);
+    fread(image_buffer,1,size,fp);
+    fclose(fp);
+
+    rn_initialize();
+    
+    rn_start_client(&context_client, SERVER_ADDRESS, SERVER_PORT, CLIENT_NODE_ID, handler);
+    
+    while (!connection_established){}
+    for(i = 0;i < 30;i++)
+    {
+        rn_write_data(psock,CLIENT_NODE_ID,image_buffer,0,size);
+    }
+    
+    rn_stop_client(&context_client);
+
+    rn_deinitialize();
+
+    free(image_buffer);
+    return 0;
+}
+///////////////////////////////////////////////////////////
+#include "..\RobotNetwork\robot_network.h"
+
+#include <stdio.h>
+
+#define SERVER_ADDRESS  "127.0.0.1"
+#define SERVER_PORT     2333
+#define CLIENT_NODE_ID  1
+
+#define NUMBER_OF_CLIENTS   8
+
+RN_CONTEXT client_context[NUMBER_OF_CLIENTS];
+int connection_established[NUMBER_OF_CLIENTS];
+PSOCK psock[NUMBER_OF_CLIENTS];
+int client_node_id[NUMBER_OF_CLIENTS];
+
+
+
+
+void* handler(RN_PCONTEXT pcontext, PSOCK psrc_socket, int event, int nid, void* data, int size)
+{
+    switch (event)
+    {
+     case EVENT_NETWORK_CONNECTION_FAILED:
+        connection_established[nid]= 1;
+        psock[nid] = NULL;
+        break;
+     case EVENT_NETWORK_CONNECTION_NEW:
+        printf("\n%i@%s => Connection Established\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr));
+        
+        connection_established[nid]= 1;
+        psock[nid] = psrc_socket;
+        break;
+    case EVENT_NETWORK_CONNECTION_CLOSED:
+        printf("%i@%s => Connection Closed\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr));
+        break;
+    case EVENT_NETWORK_CONNECTION_RX:
+        printf("%i@%s => Connection Recieved %ib of Data from node %i: ", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr),size, nid);
+        //rn_write_data(pcontext,psrc_socket,((unsigned char*)data),0,size);
+        break;
+    case EVENT_NETWORK_CONNECTION_TX:
+        printf("%i@%s => Connection Sent Data\n", psrc_socket->socket_addr.sin_port , inet_ntoa(psrc_socket->socket_addr.sin_addr), nid);
+        break;
+    default:
+        printf("Unknown event.\n");
+        break;
+    }
+    return NULL;
+
+}
+
+void initialize_clients()
+{
+    int i = 0;
+    for (i = 0;i < NUMBER_OF_CLIENTS;++i)
+    {
+        client_node_id[i] = i;
+        connection_established[i] = 0;
+        rn_start_client(&client_context[i], SERVER_ADDRESS, SERVER_PORT, client_node_id[i], handler);
+        Sleep(50);
+    }
+}
+
+void deinitialize_clients()
+{
+    int i = 0;
+    for (i = 0;i < NUMBER_OF_CLIENTS;++i)
+    {
+        rn_stop_client(&client_context[i]);
+    }
+}
+
+int main(int argc, char **argv)
+{
+    int i;
+    int j;
+    int all_connected=0;
+    FILE* fp;
+    long size;
+    unsigned char* image_buffer = (unsigned char*)malloc(16777216);
+    printf("Client Test\n");
+    rn_initialize();
+    
+    initialize_clients();
+
+    //system("pause");
+    fp = fopen("c:\\AAAAAATestImage.bmp","r+b");
+    fseek (fp , 0 , SEEK_END);
+    size = ftell (fp);
+    rewind (fp);
+    fread(image_buffer,1,size,fp);
+    fclose(fp);
+
+    while (!all_connected)
+    {
+        all_connected = 1;
+        for (j=0;j < NUMBER_OF_CLIENTS;++j)
+        {
+            if (connection_established[j] == 0)
+            {
+                all_connected = 0;
+                break;
+            }
+        }
+        //if at this point all_connected == 1, then there is
+        // no connection that has not been established.
+    }
+
+    for(i = 0;i < 30;i++)
+    {
+        for (j=0;j < NUMBER_OF_CLIENTS;++j)
+        {
+            if (psock[j] != NULL)
+                rn_write_data(psock[j],client_node_id[j],image_buffer,0,size);
+            Sleep(0);
+        }
+        Sleep(50);
+    }
+
+    deinitialize_clients();
+    rn_deinitialize();
+
+    free(image_buffer);
+    return 0;
+}
+///////////////////////////////////////////////////////////////////////////////////////////
+#ifndef RobotNetwork_h_
+#define RobotNetwork_h_
+#include <WinSock.h>
+#include <Windows.h>
+
+#include "list.h"
+
+#define ERR_SUCCESS                     0  //This is a good thing.
+#define ERR_FUNCTIONSTUB               -1
+#define ERR_FAILEDTOCREATESOCKET       -2
+#define ERR_FAILEDTOBINDSOCKET         -3
+#define ERR_FAILEDTOLISTENSOCKET       -4
+#define ERR_FAILEDTOCONNECTSOCKET      -5
+#define ERR_FAILEDTOACCEPTSOCKET       -6
+
+#define FLAG_NETWORK_NOT_DONE           0
+#define FLAG_NETWORK_DONE               1
+#define FLAG_NETWORK_MODE_SERVER        0
+#define FLAG_NETWORK_MODE_CLIENT        1
+
+#define EVENT_NETWORK_CONNECTION_NEW    0
+#define EVENT_NETWORK_CONNECTION_CLOSED 1
+#define EVENT_NETWORK_CONNECTION_RX     2
+#define EVENT_NETWORK_CONNECTION_TX     3
+
+#define STATE_READ_HEADER               0
+#define STATE_READ_PAYLOAD              1
+
+struct _RN_CONTEXT;
+
+typedef struct _RN_CONTEXT RN_CONTEXT, *RN_PCONTEXT;
+
+
+typedef void*(*EVENT_HANDLER)(int event, RN_PCONTEXT pcontext, int nid, void* data, int size);
+
+typedef struct _SOCKET{
+
+}SOCKET,*PSOCKET;
+
+typedef struct _RN_CONTEXT{
+    char            ip[16];
+    int             port;
+    int             nid;
+    EVENT_HANDLER   event_handler;
+    HANDLE          event_thread_handle;
+    int             event_thread_id;
+    int             is_done;
+    int             primary_socket;
+    LIST            child_contexts;
+    struct 
+     sockaddr_in    socket_addr;
+    int             network_mode;
+    
+    unsigned char*   read_buffer;
+    unsigned char*   read_buffer_ptr;
+    int              read_buffer_size;
+
+    unsigned char*   write_buffer;
+    unsigned char*   write_buffer_ptr;
+    int              write_buffer_size;
+
+};
+
+
+
+//General Interface 
+int         rn_initialize             ();
+int         rn_cleanup                ();
+int         rn_write_data             (RN_PCONTEXT pcontext);
+//int         rn_get_node_id            (struct sockaddr_in addr);
+
+//Server Interface 
+int         rn_start_server           (RN_PCONTEXT* pcontext, char* ip, int port, EVENT_HANDLER event_handler);
+int         rn_stop_server            (RN_PCONTEXT* pcontext);
+
+//Client Interface 
+int         rn_start_client           (RN_PCONTEXT pcontext, char* ip, int port, int nid, EVENT_HANDLER event_handler);
+int         rn_stop_client            (RN_PCONTEXT pcontext);
+
+//Socket Level Interface 
+int         rn_create_socket          (RN_PCONTEXT pcontext);
+int         rn_connect_socket         (RN_PCONTEXT pcontext);
+int         rn_bind_socket            (RN_PCONTEXT pcontext);
+int         rn_listen_socket          (RN_PCONTEXT pcontext);
+int         rn_accept_socket          (RN_PCONTEXT pcontext);
+int         rn_disconnect_socket      (RN_PCONTEXT pcontext);
+int         rn_can_read_socket        (RN_PCONTEXT pcontext);
+int         rn_can_write_socket       (RN_PCONTEXT pcontext);
+int         rn_read_socket            (RN_PCONTEXT pcontext, unsigned char* in_buffer, int offset, int len);
+int         rn_write_socket           (RN_PCONTEXT pcontext);
+
+
+//Internals 
+int         rn_add_new_connection     (RN_PCONTEXT pcontext);
+void*       rn_event_thread           (RN_PCONTEXT pcontext);
+
+#endif
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+#include "RobotNetwork.h"
+
+#include <stdio.h>
+
+
+int rn_initialize()
+{
+    WSADATA wsa_data;
+    WSAStartup(MAKEWORD(1,1), &wsa_data );
+    return ERR_SUCCESS;
+}
+
+int rn_cleanup()
+{
+    WSACleanup();
+    return ERR_SUCCESS;
+}
+
+int rn_write_data(RN_PCONTEXT pcontext)
+{
+    return 0;
+}
+
+int rn_read_data(RN_PCONTEXT pcontext)
+{
+    return 0;
+}
+
+//int rn_get_node_id(struct sockaddr_in addr)
+//{
+//    int i;
+//    for (i = 0;i < (sizeof(node_associations)/sizeof(NODE_ASSOCIATION))-1;++i)
+//    {
+//
+//    }
+//}
+
+
+int rn_start_server(RN_PCONTEXT* pcontext, char* ip, int port, EVENT_HANDLER event_handler)
+{
+
+    //Initialize context for listening socket 
+    *pcontext = (RN_PCONTEXT)malloc(sizeof(RN_CONTEXT));
+    memcpy((*pcontext)->ip , ip, 16);
+    (*pcontext)->port = port;
+    
+    (*pcontext)->event_handler = event_handler;
+
+    list_initialize(&(*pcontext)->child_contexts);
+
+    rn_create_socket(*pcontext);
+    rn_bind_socket  (*pcontext);
+    rn_listen_socket(*pcontext);
+
+    (*pcontext)->network_mode = FLAG_NETWORK_MODE_SERVER;
+    (*pcontext)->is_done = FLAG_NETWORK_NOT_DONE;
+    (*pcontext)->event_thread_handle = CreateThread(NULL,
+                                                 0,
+                                                 (LPTHREAD_START_ROUTINE)rn_event_thread, 
+                                                 *pcontext, 
+                                                 0, 
+                                                 (DWORD*)&(*pcontext)->event_thread_id);
+    return ERR_SUCCESS;
+}
+
+int rn_stop_server(RN_PCONTEXT* pcontext)
+{
+    (*pcontext)->is_done = FLAG_NETWORK_DONE;
+    WaitForSingleObject((*pcontext)->event_thread_handle,INFINITE);
+    closesocket((*pcontext)->primary_socket);
+    free(*pcontext);
+    *pcontext = NULL;
+    return ERR_SUCCESS;
+}
+
+int rn_start_client (RN_PCONTEXT pcontext, char* ip, int port, int nid, EVENT_HANDLER event_handler)
+{
+    //Initialize context for outgoing socket
+    memcpy(pcontext->ip , ip, 16);
+    pcontext->port = port;
+    pcontext->nid = nid;
+    pcontext->event_handler = event_handler;
+
+    //Create Socket
+    rn_create_socket(pcontext);
+
+    //Connect Socket
+    pcontext->local_socket_addr.sin_family  = AF_INET;
+    pcontext->local_socket_addr.sin_port    = htons(pcontext->port);
+    pcontext->local_socket_addr.sin_addr.s_addr = inet_addr(pcontext->ip);
+    if (connect(pcontext->primary_socket, (struct sockaddr*)&pcontext->local_socket_addr, sizeof(struct sockaddr_in)))
+    {    
+        printf("rn_connect_socket() Failed to connect.\n");
+        return ERR_FAILEDTOCONNECTSOCKET;
+    }
+
+    //Start event pump
+    pcontext->network_mode = FLAG_NETWORK_MODE_CLIENT;
+    pcontext->is_done = FLAG_NETWORK_NOT_DONE;
+    pcontext->event_thread_handle = CreateThread(NULL,
+                                                0,
+                                                (LPTHREAD_START_ROUTINE)rn_event_thread, 
+                                                pcontext, 
+                                                0, 
+                                                (DWORD*)&pcontext->event_thread_id);
+
+    return ERR_SUCCESS;
+}
+
+int rn_stop_client (RN_PCONTEXT pcontext)
+{
+    pcontext->is_done = FLAG_NETWORK_DONE;
+    return ERR_SUCCESS;
+}
+
+int rn_create_socket(RN_PCONTEXT pcontext)
+{
+    //Create
+    pcontext->primary_socket = (int)socket(PF_INET,SOCK_STREAM,0);
+    if (pcontext->primary_socket < 0)
+    {
+        printf("rn_create_socket() Failed.\n");
+        return ERR_FAILEDTOCREATESOCKET;
+    }
+    return ERR_SUCCESS;
+}
+
+int rn_connect_socket(RN_PCONTEXT pcontext)
+{
+    return ERR_SUCCESS;
+}
+
+int rn_bind_socket(RN_PCONTEXT pcontext)
+{
+    //Bind
+    int iOptVal=1;
+
+    pcontext->local_socket_addr.sin_family = AF_INET;
+    pcontext->local_socket_addr.sin_port = htons(pcontext->port);
+    pcontext->local_socket_addr.sin_addr.s_addr = inet_addr(pcontext->ip);
+
+    //  Reuse address if it is already in use. mostly usefuly for debugging.
+    setsockopt(pcontext->primary_socket,SOL_SOCKET,SO_REUSEADDR,(char*)&iOptVal,sizeof(int));
+
+    if (bind(pcontext->primary_socket,(struct sockaddr*)&pcontext->local_socket_addr,sizeof(struct sockaddr)) < 0)
+    {
+        printf("rn_listen_socket() Failed to bind.\n");
+        return ERR_FAILEDTOBINDSOCKET;
+    }
+    return ERR_SUCCESS;
+}
+
+int rn_listen_socket (RN_PCONTEXT pcontext)
+{    
+    //Listen
+    if (listen(pcontext->primary_socket,5))
+    {
+        printf("rn_listen_socket() Failed to listen.\n");
+        return ERR_FAILEDTOLISTENSOCKET;
+    }
+
+    //We're good.
+    return ERR_SUCCESS;
+}
+
+int rn_accept_socket(RN_PCONTEXT pcontext)
+{
+    int newly_accepted_socket;
+    struct sockaddr_in newly_accept_addr;
+    RN_CONTEXT new_child_context;
+
+    int len = sizeof(struct sockaddr_in);
+    
+    newly_accepted_socket = accept(pcontext->primary_socket,(struct sockaddr*)&newly_accept_addr,&len);
+
+    if (newly_accepted_socket == INVALID_SOCKET){
+        printf("rn_accept_socket() Failed to accept incoming connection.\n");
+        return ERR_FAILEDTOACCEPTSOCKET;
+    }
+
+    //Accept was successful.
+    
+    new_child_context.primary_socket = newly_accepted_socket;
+    new_child_context.local_socket_addr = newly_accept_addr;
+
+    list_add_node(&pcontext->child_contexts, &new_child_context, sizeof(RN_CONTEXT),MODE_BEG);
+
+    return ERR_SUCCESS;
+}
+
+int rn_disconnect_socket(RN_PCONTEXT pcontext)
+{
+    return ERR_SUCCESS;
+}
+
+int rn_can_read_socket(RN_PCONTEXT pcontext)
+{
+    struct timeval tv;
+    fd_set rdset;
+
+    tv.tv_sec = 0;
+    tv.tv_usec=500;
+    
+    FD_ZERO(&rdset);
+    FD_SET(pcontext->primary_socket,&rdset);
+    if (select(pcontext->primary_socket+1,&rdset,0,0,&tv))
+        return 1;
+    return 0;
+}
+
+int rn_can_write_socket(RN_PCONTEXT pcontext)
+{
+    struct timeval tv;
+    fd_set wrset;
+
+    tv.tv_sec = 0;
+    tv.tv_usec=500;
+    
+    FD_ZERO(&wrset);
+    FD_SET(pcontext->primary_socket,&wrset);
+    if (select(pcontext->primary_socket+1,0,&wrset,0,&tv))
+        return 1;
+    return 0;
+}
+
+void* rn_event_thread(RN_PCONTEXT pcontext)
+{
+    PLIST_NODE cur_child_context;
+    int ret;
+    int cur_index;
+    int bytes_read;
+    int data_packet_id;
+    int data_packet_len;
+    unsigned char* read_buffer;
+    read_buffer = (unsigned char*)malloc(16777216);
+    while (pcontext->is_done == FLAG_NETWORK_NOT_DONE)
+    {
+        if (pcontext->network_mode == FLAG_NETWORK_MODE_SERVER)
+        {
+            //Service Pending Accepts on listening socket
+            if (rn_can_read_socket(pcontext))
+            {
+                rn_accept_socket(pcontext);
+                pcontext->event_handler(EVENT_NETWORK_CONNECTION_NEW, pcontext, 0, NULL, 0);
+            }
+
+            //Service Pending Reads on client sockets
+reset_loop:
+            cur_child_context = pcontext->child_contexts.head;
+            cur_index = 0;
+
+        
+            for(;cur_child_context != NULL;cur_child_context = cur_child_context->next, cur_index++)
+            {
+                
+                RN_PCONTEXT child_context = (RN_PCONTEXT)cur_child_context->data;
+                if (rn_can_read_socket(child_context))
+                {
+                    bytes_read = rn_read_socket(child_context, read_buffer, 0, 8);
+                    if (bytes_read == 0)
+                    {
+                        pcontext->event_handler(EVENT_NETWORK_CONNECTION_CLOSED, child_context, data_packet_id, read_buffer, data_packet_len);
+                        list_del_node_at(&pcontext->child_contexts, cur_index);
+                        
+                        //Reset current child context pointer to beginning, because 
+                        // we altered the list by removing a remotely closed client.
+                        cur_child_context = pcontext->child_contexts.head;
+                        cur_index = 0;
+                        goto reset_loop;
+
+                    }else if (bytes_read > 0 && bytes_read < 8)
+                    {
+                        printf("rn_event_thread() => rn_read_socket() read a corrupted header.\n");
+                        continue;
+                    }
+
+                    data_packet_id = *((unsigned int*)(&read_buffer[0]));
+                    data_packet_len = *((unsigned int*)&read_buffer[4]);
+
+                    bytes_read = 0;
+                    while(bytes_read < data_packet_len)
+                    {
+                        ret = rn_read_socket(child_context, read_buffer, bytes_read, data_packet_len-bytes_read);
+                        bytes_read += ret;
+                    }
+
+                    pcontext->event_handler(EVENT_NETWORK_CONNECTION_RX, child_context, data_packet_id, read_buffer, data_packet_len);
+                }
+            }
+        }
+
+        //Service Pending Reads
+
+        //Service Pending Writes
+    }
+    free(read_buffer);
+    return NULL;
+}
+
+int rn_read_socket (RN_PCONTEXT pcontext, unsigned char* in_buffer, int offset, int len)
+{
+    int read = recv(pcontext->primary_socket ,((char*)in_buffer)+offset, len,0);
+    if (read == SOCKET_ERROR)
+        printf("rn_read_socket => recv() failed: %i.\n", WSAGetLastError());
+    return read;
+}
+
+int rn_write_socket(RN_PCONTEXT pcontext)
+{
+    return 0;
+}
+
+
+////////////////////////////////////////////////////////////
+
+else if (pcontext->network_mode == FLAG_NETWORK_MODE_CLIENT)
+        {
+            //Service Pending Client Writes
+            if (rn_can_write_socket(&pcontext->primary_socket))
+            {
+            }
+
+            //Service Pending client reads
+            if (rn_can_read_socket(&pcontext->primary_socket))
+            {
+                bytes_read = rn_read_socket(&pcontext->primary_socket, read_buffer, 0, 1500);
+                if (bytes_read == 0)
+                {
+                    pcontext->event_handler(pcontext, &pcontext->primary_socket, EVENT_NETWORK_CONNECTION_CLOSED, data_packet_id, read_buffer, data_packet_len);
+
+                    free(pcontext->primary_socket.read_buffer);
+                    free(pcontext->primary_socket.write_buffer);
+
+                }
+                else if (bytes_read > 0)
+                {
+                    //we got some good data...
+                    //buffer it.
+                    //are we looking for header? or do we already know payload size and are trying to get the payload?
+                    memcpy(pcontext->primary_socket.read_buffer+pcontext->primary_socket.read_buffer_index, read_buffer, bytes_read);
+                    pcontext->primary_socket.read_buffer_index += bytes_read;
+
+                    if (pcontext->primary_socket.read_buffer_index >= 8)
+                    {
+                        data_packet_id  = *((unsigned int*)&pcontext->primary_socket.read_buffer[0]);
+                        data_packet_len = *((unsigned int*)&pcontext->primary_socket.read_buffer[4]);
+
+                        if (pcontext->primary_socket.read_buffer_index-8 >= data_packet_len)
+                        {
+                            pcontext->event_handler(pcontext, &pcontext->primary_socket,EVENT_NETWORK_CONNECTION_RX, data_packet_id, pcontext->primary_socket.read_buffer+8, data_packet_len);
+                            memcpy(pcontext->primary_socket.read_buffer, pcontext->primary_socket.read_buffer+pcontext->primary_socket.read_buffer_index, pcontext->primary_socket.read_buffer_size - pcontext->primary_socket.read_buffer_index);
+                            pcontext->primary_socket.read_buffer_index = 0;
+                        }
+                    }
+                }
+                else if (bytes_read < 0)
+                {
+                    printf("rn_event_thread() => rn_read_socket() failed.\n");
+                    continue;
+                }
+            }
